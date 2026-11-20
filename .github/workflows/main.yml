@@ -9,14 +9,39 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Extract project zip (if there is one)
+        run: |
+          ZIP=$(find . -maxdepth 1 -name '*.zip' | head -n 1)
+          if [ -n "$ZIP" ]; then
+            echo "Extracting $ZIP"
+            mkdir -p project
+            unzip -q -o "$ZIP" -d project
+          else
+            echo "No zip found, building the repo as is"
+            mkdir -p project
+            rsync -a --exclude project --exclude .git ./ project/
+          fi
+
+      - name: Find project folder (the one with pom.xml)
+        id: proj
+        run: |
+          POM=$(find project -name pom.xml -not -path '*/node_modules/*' | head -n 1)
+          if [ -z "$POM" ]; then echo "No pom.xml found"; exit 1; fi
+          echo "dir=$(dirname "$POM")" >> "$GITHUB_OUTPUT"
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
           cache: maven
+          cache-dependency-path: '**/pom.xml'
+
       - name: Build
+        working-directory: ${{ steps.proj.outputs.dir }}
         run: mvn -B package
+
       - uses: actions/upload-artifact@v4
         with:
           name: CaneIslands
-          path: target/CaneIslands.jar
+          path: ${{ steps.proj.outputs.dir }}/target/CaneIslands.jar
